@@ -106,6 +106,7 @@ class TapBambooHR(Tap):
                         "fields",
                         th.ArrayType(th.StringType),
                         default=[
+                            "id",
                             "department",
                             "division",
                             "eeo",
