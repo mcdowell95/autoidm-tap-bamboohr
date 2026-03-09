@@ -475,18 +475,19 @@ class JobInfo(TapBambooHRStream):
                 yield row
 
 
-class ENPS(TapBambooHRStream):
-    """Employee Net Promoter Score report stream.
+class ENPSSurveys(TapBambooHRStream):
+    """Discovers available eNPS survey periods.
 
     Uses the subdomain-based URL (not the API gateway).
-    Extracts key eNPS metrics from the widget-based report response.
+    Makes a single request to discover all survey period IDs, which are then
+    used by the child ENPS stream to fetch each period's data.
     """
 
-    name = "enps"
+    name = "enps_surveys"
     path = "/reports/enps/-49"
-    primary_keys = ["report_id", "survey_filter_value"]
+    primary_keys = ["survey_id"]
     replication_key = None
-    schema_filepath = SCHEMAS_DIR / "enps.json"
+    schema_filepath = SCHEMAS_DIR / "enps_surveys.json"
 
     @property
     def url_base(self) -> str:
@@ -497,6 +498,56 @@ class ENPS(TapBambooHRStream):
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         return {"format": "json"}
+
+    def get_new_paginator(self) -> SinglePagePaginator:
+        return SinglePagePaginator()
+
+    def get_child_context(
+        self,
+        record: dict,
+        context: Optional[dict],
+    ) -> dict:
+        return {"survey_id": record["survey_id"]}
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        data = response.json()
+        widgets = data.get("formatData", {}).get("widgets", {})
+        survey_filter = widgets.get("surveyFilter", {}).get("data", {})
+        items = survey_filter.get("selectData", {}).get("items", [])
+        for item in items:
+            if "value" in item:
+                yield {
+                    "survey_id": item["value"],
+                    "survey_label": item.get("displayText"),
+                }
+
+
+class ENPS(TapBambooHRStream):
+    """Employee Net Promoter Score report stream.
+
+    Uses the subdomain-based URL (not the API gateway).
+    Child of ENPSSurveys — fetches eNPS data for each historical survey period.
+    """
+
+    name = "enps"
+    path = "/reports/enps/-49"
+    primary_keys = ["report_id", "survey_filter_value"]
+    replication_key = None
+    schema_filepath = SCHEMAS_DIR / "enps.json"
+    parent_stream_type = ENPSSurveys
+
+    @property
+    def url_base(self) -> str:
+        subdomain = self.config.get("subdomain")
+        return f"https://{subdomain}.bamboohr.com"
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        params = {"format": "json"}
+        if context and context.get("survey_id"):
+            params["surveyFilter"] = context["survey_id"]
+        return params
 
     def get_new_paginator(self) -> SinglePagePaginator:
         return SinglePagePaginator()

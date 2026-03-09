@@ -9,6 +9,7 @@ from singer_sdk import typing as th
 from tap_bamboohr.streams import (
     CustomReport,
     ENPS,
+    ENPSSurveys,
     Photos,
     PhotosUsers,
     Employees,
@@ -30,6 +31,7 @@ PLUGIN_NAME = "tap-bamboohr"
 
 STREAM_TYPES = [  # CustomReport has special handing below
     ENPS,
+    ENPSSurveys,
     Photos,
     PhotosUsers,
     Employees,
