@@ -10,6 +10,8 @@ from tap_bamboohr.streams import (
     CustomReport,
     ENPS,
     ENPSSurveys,
+    EmployeeWellbeing,
+    EmployeeWellbeingSurveys,
     Photos,
     PhotosUsers,
     Employees,
@@ -32,6 +34,8 @@ PLUGIN_NAME = "tap-bamboohr"
 STREAM_TYPES = [  # CustomReport has special handing below
     ENPS,
     ENPSSurveys,
+    EmployeeWellbeing,
+    EmployeeWellbeingSurveys,
     Photos,
     PhotosUsers,
     Employees,

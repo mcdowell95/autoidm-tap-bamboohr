@@ -624,6 +624,170 @@ class ENPS(TapBambooHRStream):
         yield record
 
 
+class EmployeeWellbeingSurveys(TapBambooHRStream):
+    """Discovers available employee wellbeing survey periods.
+
+    Uses the subdomain-based URL (not the API gateway).
+    Makes a single request to discover all survey period IDs, which are then
+    used by the child EmployeeWellbeing stream to fetch each period's data.
+    """
+
+    name = "employee_wellbeing_surveys"
+    path = "/reports/employee-wellbeing/-65"
+    primary_keys = ["survey_id"]
+    replication_key = None
+    schema_filepath = SCHEMAS_DIR / "employee_wellbeing_surveys.json"
+
+    @property
+    def url_base(self) -> str:
+        subdomain = self.config.get("subdomain")
+        return f"https://{subdomain}.bamboohr.com"
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        return {"format": "json"}
+
+    def get_new_paginator(self) -> SinglePagePaginator:
+        return SinglePagePaginator()
+
+    def get_child_context(
+        self,
+        record: dict,
+        context: Optional[dict],
+    ) -> dict:
+        return {"survey_id": record["survey_id"]}
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        data = response.json()
+        widgets = data.get("formatData", {}).get("widgets", {})
+        survey_filter = widgets.get("surveyFilter", {}).get("data", {})
+        items = survey_filter.get("selectData", {}).get("items", [])
+        for item in items:
+            if "value" in item:
+                yield {
+                    "survey_id": item["value"],
+                    "survey_label": item.get("displayText"),
+                }
+
+
+class EmployeeWellbeing(TapBambooHRStream):
+    """Employee Wellbeing survey report stream.
+
+    Uses the subdomain-based URL (not the API gateway).
+    Child of EmployeeWellbeingSurveys — fetches wellbeing data for each historical survey period.
+    Score is an average on a 1–5 scale (float), unlike eNPS which uses -100 to 100.
+    """
+
+    name = "employee_wellbeing"
+    path = "/reports/employee-wellbeing/-65"
+    primary_keys = ["report_id", "survey_filter_value"]
+    replication_key = None
+    schema_filepath = SCHEMAS_DIR / "employee_wellbeing.json"
+    parent_stream_type = EmployeeWellbeingSurveys
+
+    @property
+    def url_base(self) -> str:
+        subdomain = self.config.get("subdomain")
+        return f"https://{subdomain}.bamboohr.com"
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        params = {"format": "json"}
+        if context and context.get("survey_id"):
+            params["surveyFilter"] = context["survey_id"]
+        return params
+
+    def get_new_paginator(self) -> SinglePagePaginator:
+        return SinglePagePaginator()
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        data = response.json()
+        format_data = data.get("formatData", {})
+        widgets = format_data.get("widgets", {})
+
+        # Wellbeing score widget — try common widget name patterns
+        # NOTE: verify widget name against actual API response if score is None
+        score_widget_data = (
+            widgets.get("wellbeingScore", {})
+            or widgets.get("eWellbeingScore", {})
+            or widgets.get("wellbeingScoreWidget", {})
+        ).get("data", {})
+
+        # Trend chart widget
+        trend = (
+            widgets.get("wellbeingTrendChart", {})
+            or widgets.get("enpsTrendChart", {})
+        ).get("data", {})
+
+        # Survey status widget
+        survey_open_data = widgets.get("surveyOpen", {}).get("data", {})
+
+        # Survey filter widget (which survey period)
+        survey_filter = widgets.get("surveyFilter", {}).get("data", {})
+
+        # Scores across company widget
+        across_company = (
+            widgets.get("scoresAcrossCompanyChart", {})
+            or widgets.get("wellbeingAcrossCompanyChart", {})
+        ).get("data", {})
+
+        # Find selected survey filter
+        survey_filter_value = None
+        survey_filter_label = None
+        for item in survey_filter.get("selectData", {}).get("items", []):
+            if item.get("selected"):
+                survey_filter_value = item.get("value")
+                survey_filter_label = item.get("displayText")
+                break
+
+        # Extract department scores (left chart)
+        dept_scores = None
+        left_chart = across_company.get("charts", {}).get("left", {})
+        if left_chart.get("bars"):
+            dept_scores = json.dumps(left_chart["bars"])
+
+        # Extract division scores (right chart)
+        div_scores = None
+        right_chart = across_company.get("charts", {}).get("right", {})
+        if right_chart.get("bars"):
+            div_scores = json.dumps(right_chart["bars"])
+
+        # Extract trend data
+        trend_dates = None
+        trend_scores = None
+        if trend.get("xAxisTitles"):
+            trend_dates = json.dumps(trend["xAxisTitles"])
+        if trend.get("lines") and len(trend["lines"]) > 0:
+            points = trend["lines"][0].get("points", [])
+            trend_scores = json.dumps([p.get("y") for p in points])
+
+        record = {
+            "report_id": format_data.get("reportId"),
+            "title": data.get("title"),
+            "score": score_widget_data.get("score") or score_widget_data.get("mainBar", {}).get("value"),
+            "number_of_responses": score_widget_data.get("numberOfResponses"),
+            "response_rate_percent": score_widget_data.get("ternaryPercent"),
+            "response_rate_description": score_widget_data.get("ternaryValue"),
+            "has_enough_data": (
+                widgets.get("wellbeingScore", {})
+                or widgets.get("eWellbeingScore", {})
+                or widgets.get("wellbeingScoreWidget", {})
+            ).get("hasEnoughData"),
+            "survey_open": survey_open_data.get("open"),
+            "survey_close_date": survey_open_data.get("closeDate"),
+            "survey_percent_complete": survey_open_data.get("percentComplete"),
+            "survey_filter_value": survey_filter_value,
+            "survey_filter_label": survey_filter_label,
+            "trend_dates": trend_dates,
+            "trend_scores": trend_scores,
+            "department_scores": dept_scores,
+            "division_scores": div_scores,
+        }
+        yield record
+
+
 class WhosOut(TapBambooHRStream):
     name = "whos_out"
     path = "/time_off/whos_out"
