@@ -1,0 +1,11 @@
+{
+  "type": ["object"],
+  "properties": {
+    "period_id": {
+      "type": ["string"]
+    },
+    "period_label": {
+      "type": ["string", "null"]
+    }
+  }
+}
