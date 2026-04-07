@@ -19,19 +19,16 @@
     "total_terminations": {
       "type": ["integer", "null"]
     },
-    "voluntary_terminations": {
-      "type": ["integer", "null"]
-    },
-    "involuntary_terminations": {
-      "type": ["integer", "null"]
-    },
     "turnover_rate": {
       "type": ["string", "null"]
     },
-    "voluntary_rate": {
+    "left_donut": {
       "type": ["string", "null"]
     },
-    "involuntary_rate": {
+    "middle_donut": {
+      "type": ["string", "null"]
+    },
+    "right_donut": {
       "type": ["string", "null"]
     },
     "trend_dates": {
@@ -40,10 +37,10 @@
     "trend_values": {
       "type": ["string", "null"]
     },
-    "department_breakdown": {
+    "stacked_bar_chart": {
       "type": ["string", "null"]
     },
-    "raw_widgets": {
+    "bar_chart": {
       "type": ["string", "null"]
     }
   }
