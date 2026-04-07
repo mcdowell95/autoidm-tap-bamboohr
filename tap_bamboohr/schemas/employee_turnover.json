@@ -7,7 +7,31 @@
     "title": {
       "type": ["string", "null"]
     },
-    "raw_data": {
+    "period_label": {
+      "type": ["string", "null"]
+    },
+    "period_start": {
+      "type": ["string", "null"]
+    },
+    "period_end": {
+      "type": ["string", "null"]
+    },
+    "turnover_rate": {
+      "type": ["number", "null"]
+    },
+    "total_terminations": {
+      "type": ["integer", "null"]
+    },
+    "avg_employee_count": {
+      "type": ["integer", "null"]
+    },
+    "monthly_bars": {
+      "type": ["string", "null"]
+    },
+    "termination_type_breakdown": {
+      "type": ["string", "null"]
+    },
+    "termination_reason_breakdown": {
       "type": ["string", "null"]
     }
   }

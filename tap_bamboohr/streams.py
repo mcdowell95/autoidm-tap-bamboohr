@@ -818,10 +818,29 @@ class EmployeeTurnover(TapBambooHRStream):
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
         data = response.json()
         format_data = data.get("formatData", {})
+        widgets = format_data.get("widgets", {})
+
+        total_turnover = widgets.get("totalTurnover", {}).get("data", {})
+        calendar_filter = widgets.get("calendarFilter", {})
+        bar_chart_bars = widgets.get("barChart", {}).get("data", {}).get("bars", [])
+        middle_donut_data = widgets.get("middleDonut", {}).get("data", {}).get("data", [])
+        left_donut_data = widgets.get("leftDonut", {}).get("data", {}).get("data", [])
+
         yield {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            "raw_data": json.dumps(format_data),
+            "period_label": widgets.get("summaryTitle", {}).get("data", {}).get("displayText"),
+            "period_start": calendar_filter.get("formatData", {}).get("start"),
+            "period_end": calendar_filter.get("formatData", {}).get("end"),
+            "turnover_rate": total_turnover.get("displayText"),
+            "total_terminations": total_turnover.get("extra", {}).get("quantity"),
+            "avg_employee_count": total_turnover.get("extra", {}).get("avgEmployeeCount"),
+            # Per-month bars: each has voluntary, involuntary, turnoverCount, employeeCount, start, end
+            "monthly_bars": json.dumps(bar_chart_bars),
+            # Termination type (Regrettable/Non-regrettable, with Voluntary/Involuntary group)
+            "termination_type_breakdown": json.dumps(middle_donut_data),
+            # Termination reason breakdown
+            "termination_reason_breakdown": json.dumps(left_donut_data),
         }
 
 
