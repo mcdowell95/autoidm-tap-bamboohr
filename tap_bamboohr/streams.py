@@ -792,11 +792,8 @@ class EmployeeTurnover(TapBambooHRStream):
     """Employee Turnover report stream.
 
     Uses the subdomain-based URL (not the API gateway).
-    Fetches the default view of the turnover report (typically rolling 12 months).
-    Captures overall, voluntary, and involuntary turnover counts and rates.
-
-    raw_widgets is included to allow inspection of the actual widget keys returned
-    by the API — use this to refine field extraction if counts/rates are null.
+    Stores the full formatData blob as raw_data so all widget values are
+    available in BigQuery for querying without guessing field names.
     """
 
     name = "employee_turnover"
@@ -821,71 +818,11 @@ class EmployeeTurnover(TapBambooHRStream):
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
         data = response.json()
         format_data = data.get("formatData", {})
-        widgets = format_data.get("widgets", {})
-
-        # Overall turnover summary widget
-        total_turnover = widgets.get("totalTurnover", {}).get("data", {})
-
-        # Three donut widgets — labels in the response will confirm which is
-        # voluntary vs involuntary vs overall. Captured as raw JSON until confirmed.
-        left_donut = widgets.get("leftDonut", {}).get("data", {})
-        middle_donut = widgets.get("middleDonut", {}).get("data", {})
-        right_donut = widgets.get("rightDonut", {}).get("data", {})
-
-        # Calendar-based period filter
-        calendar_filter = widgets.get("calendarFilter", {}).get("data", {})
-
-        # Trend line chart
-        line_chart = widgets.get("lineChart", {}).get("data", {})
-
-        # Stacked bar chart (voluntary vs involuntary over time)
-        stacked_bar = widgets.get("stackedBarChart", {}).get("data", {})
-
-        # Bar chart (likely department breakdown)
-        bar_chart = widgets.get("barChart", {}).get("data", {})
-
-        # Extract trend data from line chart
-        trend_dates = None
-        trend_values = None
-        if line_chart.get("xAxisTitles"):
-            trend_dates = json.dumps(line_chart["xAxisTitles"])
-        if line_chart.get("lines") and len(line_chart["lines"]) > 0:
-            points = line_chart["lines"][0].get("points", [])
-            trend_values = json.dumps([p.get("y") for p in points])
-
-        record = {
+        yield {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            # Period info from calendar filter
-            "period_filter_value": calendar_filter.get("value") or calendar_filter.get("selected"),
-            "period_filter_label": calendar_filter.get("label") or calendar_filter.get("displayText"),
-            # Overall turnover — field names TBC from Postman response
-            "total_employees": (
-                total_turnover.get("employeeCount")
-                or total_turnover.get("headCount")
-                or total_turnover.get("employees")
-            ),
-            "total_terminations": (
-                total_turnover.get("terminationCount")
-                or total_turnover.get("terminations")
-                or total_turnover.get("count")
-            ),
-            "turnover_rate": (
-                total_turnover.get("rate")
-                or total_turnover.get("percentage")
-                or total_turnover.get("value")
-            ),
-            # Donuts — raw JSON until field names confirmed
-            "left_donut": json.dumps(left_donut) if left_donut else None,
-            "middle_donut": json.dumps(middle_donut) if middle_donut else None,
-            "right_donut": json.dumps(right_donut) if right_donut else None,
-            # Charts
-            "trend_dates": trend_dates,
-            "trend_values": trend_values,
-            "stacked_bar_chart": json.dumps(stacked_bar) if stacked_bar else None,
-            "bar_chart": json.dumps(bar_chart) if bar_chart else None,
+            "raw_data": json.dumps(format_data),
         }
-        yield record
 
 
 class WhosOut(TapBambooHRStream):
