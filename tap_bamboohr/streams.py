@@ -823,123 +823,67 @@ class EmployeeTurnover(TapBambooHRStream):
         format_data = data.get("formatData", {})
         widgets = format_data.get("widgets", {})
 
-        # Overall turnover widget — try common names
-        turnover_widget = (
-            widgets.get("turnoverRateWidget", {})
-            or widgets.get("turnoverScore", {})
-            or widgets.get("turnoverChart", {})
-            or widgets.get("turnoverRate", {})
-        ).get("data", {})
+        # Overall turnover summary widget
+        total_turnover = widgets.get("totalTurnover", {}).get("data", {})
 
-        # Voluntary turnover widget
-        voluntary_widget = (
-            widgets.get("voluntaryTurnoverWidget", {})
-            or widgets.get("voluntaryTurnover", {})
-            or widgets.get("voluntaryRate", {})
-        ).get("data", {})
+        # Three donut widgets — labels in the response will confirm which is
+        # voluntary vs involuntary vs overall. Captured as raw JSON until confirmed.
+        left_donut = widgets.get("leftDonut", {}).get("data", {})
+        middle_donut = widgets.get("middleDonut", {}).get("data", {})
+        right_donut = widgets.get("rightDonut", {}).get("data", {})
 
-        # Involuntary turnover widget
-        involuntary_widget = (
-            widgets.get("involuntaryTurnoverWidget", {})
-            or widgets.get("involuntaryTurnover", {})
-            or widgets.get("involuntaryRate", {})
-        ).get("data", {})
+        # Calendar-based period filter
+        calendar_filter = widgets.get("calendarFilter", {}).get("data", {})
 
-        # Employee count widget
-        headcount_widget = (
-            widgets.get("employeeCount", {})
-            or widgets.get("headCount", {})
-            or widgets.get("activeEmployees", {})
-        ).get("data", {})
+        # Trend line chart
+        line_chart = widgets.get("lineChart", {}).get("data", {})
 
-        # Period filter widget
-        period_filter = (
-            widgets.get("dateRange", {})
-            or widgets.get("surveyFilter", {})
-            or widgets.get("dateRangeFilter", {})
-            or widgets.get("turnoverFilter", {})
-        ).get("data", {})
+        # Stacked bar chart (voluntary vs involuntary over time)
+        stacked_bar = widgets.get("stackedBarChart", {}).get("data", {})
 
-        # Trend chart
-        trend = (
-            widgets.get("turnoverTrendChart", {})
-            or widgets.get("turnoverOverTimeChart", {})
-            or widgets.get("enpsTrendChart", {})
-        ).get("data", {})
+        # Bar chart (likely department breakdown)
+        bar_chart = widgets.get("barChart", {}).get("data", {})
 
-        # Department breakdown
-        dept_breakdown_widget = (
-            widgets.get("turnoverByDepartment", {})
-            or widgets.get("departmentTurnoverChart", {})
-        ).get("data", {})
-
-        # Find selected period filter
-        period_filter_value = None
-        period_filter_label = None
-        for item in period_filter.get("selectData", {}).get("items", []):
-            if item.get("selected"):
-                period_filter_value = item.get("value")
-                period_filter_label = item.get("displayText")
-                break
-
-        # Extract trend data
+        # Extract trend data from line chart
         trend_dates = None
         trend_values = None
-        if trend.get("xAxisTitles"):
-            trend_dates = json.dumps(trend["xAxisTitles"])
-        if trend.get("lines") and len(trend["lines"]) > 0:
-            points = trend["lines"][0].get("points", [])
+        if line_chart.get("xAxisTitles"):
+            trend_dates = json.dumps(line_chart["xAxisTitles"])
+        if line_chart.get("lines") and len(line_chart["lines"]) > 0:
+            points = line_chart["lines"][0].get("points", [])
             trend_values = json.dumps([p.get("y") for p in points])
-
-        # Extract department breakdown
-        dept_breakdown = None
-        if dept_breakdown_widget.get("bars"):
-            dept_breakdown = json.dumps(dept_breakdown_widget["bars"])
 
         record = {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            "period_filter_value": period_filter_value,
-            "period_filter_label": period_filter_label,
+            # Period info from calendar filter
+            "period_filter_value": calendar_filter.get("value") or calendar_filter.get("selected"),
+            "period_filter_label": calendar_filter.get("label") or calendar_filter.get("displayText"),
+            # Overall turnover — field names TBC from Postman response
             "total_employees": (
-                headcount_widget.get("headCount")
-                or headcount_widget.get("count")
-                or headcount_widget.get("value")
+                total_turnover.get("employeeCount")
+                or total_turnover.get("headCount")
+                or total_turnover.get("employees")
             ),
             "total_terminations": (
-                turnover_widget.get("terminationCount")
-                or turnover_widget.get("count")
-                or turnover_widget.get("value")
-            ),
-            "voluntary_terminations": (
-                voluntary_widget.get("terminationCount")
-                or voluntary_widget.get("count")
-                or voluntary_widget.get("value")
-            ),
-            "involuntary_terminations": (
-                involuntary_widget.get("terminationCount")
-                or involuntary_widget.get("count")
-                or involuntary_widget.get("value")
+                total_turnover.get("terminationCount")
+                or total_turnover.get("terminations")
+                or total_turnover.get("count")
             ),
             "turnover_rate": (
-                turnover_widget.get("rate")
-                or turnover_widget.get("percentage")
-                or turnover_widget.get("label")
+                total_turnover.get("rate")
+                or total_turnover.get("percentage")
+                or total_turnover.get("value")
             ),
-            "voluntary_rate": (
-                voluntary_widget.get("rate")
-                or voluntary_widget.get("percentage")
-                or voluntary_widget.get("label")
-            ),
-            "involuntary_rate": (
-                involuntary_widget.get("rate")
-                or involuntary_widget.get("percentage")
-                or involuntary_widget.get("label")
-            ),
+            # Donuts — raw JSON until field names confirmed
+            "left_donut": json.dumps(left_donut) if left_donut else None,
+            "middle_donut": json.dumps(middle_donut) if middle_donut else None,
+            "right_donut": json.dumps(right_donut) if right_donut else None,
+            # Charts
             "trend_dates": trend_dates,
             "trend_values": trend_values,
-            "department_breakdown": dept_breakdown,
-            "raw_widgets": json.dumps(list(widgets.keys())),
+            "stacked_bar_chart": json.dumps(stacked_bar) if stacked_bar else None,
+            "bar_chart": json.dumps(bar_chart) if bar_chart else None,
         }
         yield record
 
