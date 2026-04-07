@@ -788,19 +788,22 @@ class EmployeeWellbeing(TapBambooHRStream):
         yield record
 
 
-class EmployeeTurnoverPeriods(TapBambooHRStream):
-    """Discovers available employee turnover report periods.
+class EmployeeTurnover(TapBambooHRStream):
+    """Employee Turnover report stream.
 
     Uses the subdomain-based URL (not the API gateway).
-    Makes a single request to discover all period IDs, which are then
-    used by the child EmployeeTurnover stream to fetch each period's data.
+    Fetches the default view of the turnover report (typically rolling 12 months).
+    Captures overall, voluntary, and involuntary turnover counts and rates.
+
+    raw_widgets is included to allow inspection of the actual widget keys returned
+    by the API — use this to refine field extraction if counts/rates are null.
     """
 
-    name = "employee_turnover_periods"
+    name = "employee_turnover"
     path = "/reports/employee-turnover/-40"
-    primary_keys = ["period_id"]
+    primary_keys = ["report_id"]
     replication_key = None
-    schema_filepath = SCHEMAS_DIR / "employee_turnover_periods.json"
+    schema_filepath = SCHEMAS_DIR / "employee_turnover.json"
 
     @property
     def url_base(self) -> str:
@@ -811,64 +814,6 @@ class EmployeeTurnoverPeriods(TapBambooHRStream):
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         return {"format": "json"}
-
-    def get_new_paginator(self) -> SinglePagePaginator:
-        return SinglePagePaginator()
-
-    def get_child_context(
-        self,
-        record: dict,
-        context: Optional[dict],
-    ) -> dict:
-        return {"period_id": record["period_id"]}
-
-    def parse_response(self, response: requests.Response) -> Iterable[dict]:
-        data = response.json()
-        widgets = data.get("formatData", {}).get("widgets", {})
-        # Try possible filter widget names for the turnover report
-        period_filter = (
-            widgets.get("dateRange", {})
-            or widgets.get("surveyFilter", {})
-            or widgets.get("dateRangeFilter", {})
-            or widgets.get("turnoverFilter", {})
-        ).get("data", {})
-        items = period_filter.get("selectData", {}).get("items", [])
-        for item in items:
-            if "value" in item:
-                yield {
-                    "period_id": item["value"],
-                    "period_label": item.get("displayText"),
-                }
-
-
-class EmployeeTurnover(TapBambooHRStream):
-    """Employee Turnover report stream.
-
-    Uses the subdomain-based URL (not the API gateway).
-    Child of EmployeeTurnoverPeriods — fetches turnover data for each period.
-    Captures overall, voluntary, and involuntary turnover counts and rates.
-    """
-
-    name = "employee_turnover"
-    path = "/reports/employee-turnover/-40"
-    primary_keys = ["report_id", "period_filter_value"]
-    replication_key = None
-    schema_filepath = SCHEMAS_DIR / "employee_turnover.json"
-    parent_stream_type = EmployeeTurnoverPeriods
-
-    @property
-    def url_base(self) -> str:
-        subdomain = self.config.get("subdomain")
-        return f"https://{subdomain}.bamboohr.com"
-
-    def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
-        params = {"format": "json"}
-        if context and context.get("period_id"):
-            # Try the most likely param name; BambooHR may use dateRange or surveyFilter
-            params["dateRange"] = context["period_id"]
-        return params
 
     def get_new_paginator(self) -> SinglePagePaginator:
         return SinglePagePaginator()
@@ -994,6 +939,7 @@ class EmployeeTurnover(TapBambooHRStream):
             "trend_dates": trend_dates,
             "trend_values": trend_values,
             "department_breakdown": dept_breakdown,
+            "raw_widgets": json.dumps(list(widgets.keys())),
         }
         yield record
 
