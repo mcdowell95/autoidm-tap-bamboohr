@@ -7,55 +7,13 @@
     "title": {
       "type": ["string", "null"]
     },
-    "score": {
-      "type": ["integer", "null"]
-    },
-    "number_of_promoters": {
-      "type": ["integer", "null"]
-    },
-    "number_of_neutrals": {
-      "type": ["integer", "null"]
-    },
-    "number_of_detractors": {
-      "type": ["integer", "null"]
-    },
-    "number_of_responses": {
-      "type": ["integer", "null"]
-    },
-    "response_rate_percent": {
-      "type": ["string", "null"]
-    },
-    "response_rate_description": {
-      "type": ["string", "null"]
-    },
-    "has_enough_data": {
-      "type": ["boolean", "null"]
-    },
-    "survey_open": {
-      "type": ["boolean", "null"]
-    },
-    "survey_close_date": {
-      "type": ["string", "null"]
-    },
-    "survey_percent_complete": {
-      "type": ["integer", "null"]
-    },
     "survey_filter_value": {
-      "type": ["string", "null"]
+      "type": ["integer", "null"]
     },
     "survey_filter_label": {
       "type": ["string", "null"]
     },
-    "trend_dates": {
-      "type": ["string", "null"]
-    },
-    "trend_scores": {
-      "type": ["string", "null"]
-    },
-    "department_scores": {
-      "type": ["string", "null"]
-    },
-    "division_scores": {
+    "raw_data": {
       "type": ["string", "null"]
     }
   }

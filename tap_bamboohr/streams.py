@@ -557,18 +557,7 @@ class ENPS(TapBambooHRStream):
         format_data = data.get("formatData", {})
         widgets = format_data.get("widgets", {})
 
-        # eNPS score from radial chart widget
-        radial = widgets.get("enpsScoreRadialChart", {}).get("data", {})
-        # Trend chart widget
-        trend = widgets.get("enpsTrendChart", {}).get("data", {})
-        # Survey status widget
-        survey_open_data = widgets.get("surveyOpen", {}).get("data", {})
-        # Survey filter widget (which survey period)
         survey_filter = widgets.get("surveyFilter", {}).get("data", {})
-        # Scores across company widget
-        across_company = widgets.get("scoresAcrossCompanyChart", {}).get("data", {})
-
-        # Find selected survey filter
         survey_filter_value = None
         survey_filter_label = None
         for item in survey_filter.get("selectData", {}).get("items", []):
@@ -577,51 +566,13 @@ class ENPS(TapBambooHRStream):
                 survey_filter_label = item.get("displayText")
                 break
 
-        # Extract department scores (left chart)
-        dept_scores = None
-        left_chart = across_company.get("charts", {}).get("left", {})
-        if left_chart.get("bars"):
-            dept_scores = json.dumps(left_chart["bars"])
-
-        # Extract division scores (right chart)
-        div_scores = None
-        right_chart = across_company.get("charts", {}).get("right", {})
-        if right_chart.get("bars"):
-            div_scores = json.dumps(right_chart["bars"])
-
-        # Extract trend data
-        trend_dates = None
-        trend_scores = None
-        if trend.get("xAxisTitles"):
-            trend_dates = json.dumps(trend["xAxisTitles"])
-        if trend.get("lines") and len(trend["lines"]) > 0:
-            points = trend["lines"][0].get("points", [])
-            trend_scores = json.dumps([p.get("y") for p in points])
-
-        record = {
+        yield {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            "score": radial.get("mainBar", {}).get("value"),
-            "number_of_promoters": radial.get("numberOfPromoters"),
-            "number_of_neutrals": radial.get("numberOfNeutrals"),
-            "number_of_detractors": radial.get("numberOfDetractors"),
-            "number_of_responses": radial.get("numberOfResponses"),
-            "response_rate_percent": radial.get("ternaryPercent"),
-            "response_rate_description": radial.get("ternaryValue"),
-            "has_enough_data": widgets.get("enpsScoreRadialChart", {}).get(
-                "hasEnoughData"
-            ),
-            "survey_open": survey_open_data.get("open"),
-            "survey_close_date": survey_open_data.get("closeDate"),
-            "survey_percent_complete": survey_open_data.get("percentComplete"),
             "survey_filter_value": survey_filter_value,
             "survey_filter_label": survey_filter_label,
-            "trend_dates": trend_dates,
-            "trend_scores": trend_scores,
-            "department_scores": dept_scores,
-            "division_scores": div_scores,
+            "raw_data": json.dumps(format_data),
         }
-        yield record
 
 
 class EmployeeWellbeingSurveys(TapBambooHRStream):
@@ -707,33 +658,7 @@ class EmployeeWellbeing(TapBambooHRStream):
         format_data = data.get("formatData", {})
         widgets = format_data.get("widgets", {})
 
-        # Wellbeing score widget — try common widget name patterns
-        # NOTE: verify widget name against actual API response if score is None
-        score_widget_data = (
-            widgets.get("wellbeingScore", {})
-            or widgets.get("eWellbeingScore", {})
-            or widgets.get("wellbeingScoreWidget", {})
-        ).get("data", {})
-
-        # Trend chart widget
-        trend = (
-            widgets.get("wellbeingTrendChart", {})
-            or widgets.get("enpsTrendChart", {})
-        ).get("data", {})
-
-        # Survey status widget
-        survey_open_data = widgets.get("surveyOpen", {}).get("data", {})
-
-        # Survey filter widget (which survey period)
         survey_filter = widgets.get("surveyFilter", {}).get("data", {})
-
-        # Scores across company widget
-        across_company = (
-            widgets.get("scoresAcrossCompanyChart", {})
-            or widgets.get("wellbeingAcrossCompanyChart", {})
-        ).get("data", {})
-
-        # Find selected survey filter
         survey_filter_value = None
         survey_filter_label = None
         for item in survey_filter.get("selectData", {}).get("items", []):
@@ -742,50 +667,13 @@ class EmployeeWellbeing(TapBambooHRStream):
                 survey_filter_label = item.get("displayText")
                 break
 
-        # Extract department scores (left chart)
-        dept_scores = None
-        left_chart = across_company.get("charts", {}).get("left", {})
-        if left_chart.get("bars"):
-            dept_scores = json.dumps(left_chart["bars"])
-
-        # Extract division scores (right chart)
-        div_scores = None
-        right_chart = across_company.get("charts", {}).get("right", {})
-        if right_chart.get("bars"):
-            div_scores = json.dumps(right_chart["bars"])
-
-        # Extract trend data
-        trend_dates = None
-        trend_scores = None
-        if trend.get("xAxisTitles"):
-            trend_dates = json.dumps(trend["xAxisTitles"])
-        if trend.get("lines") and len(trend["lines"]) > 0:
-            points = trend["lines"][0].get("points", [])
-            trend_scores = json.dumps([p.get("y") for p in points])
-
-        record = {
+        yield {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            "score": score_widget_data.get("score") or score_widget_data.get("mainBar", {}).get("value"),
-            "number_of_responses": score_widget_data.get("numberOfResponses"),
-            "response_rate_percent": score_widget_data.get("ternaryPercent"),
-            "response_rate_description": score_widget_data.get("ternaryValue"),
-            "has_enough_data": (
-                widgets.get("wellbeingScore", {})
-                or widgets.get("eWellbeingScore", {})
-                or widgets.get("wellbeingScoreWidget", {})
-            ).get("hasEnoughData"),
-            "survey_open": survey_open_data.get("open"),
-            "survey_close_date": survey_open_data.get("closeDate"),
-            "survey_percent_complete": survey_open_data.get("percentComplete"),
             "survey_filter_value": survey_filter_value,
             "survey_filter_label": survey_filter_label,
-            "trend_dates": trend_dates,
-            "trend_scores": trend_scores,
-            "department_scores": dept_scores,
-            "division_scores": div_scores,
+            "raw_data": json.dumps(format_data),
         }
-        yield record
 
 
 class EmployeeTurnover(TapBambooHRStream):
@@ -818,10 +706,29 @@ class EmployeeTurnover(TapBambooHRStream):
     def parse_response(self, response: requests.Response) -> Iterable[dict]:
         data = response.json()
         format_data = data.get("formatData", {})
+        widgets = format_data.get("widgets", {})
+
+        total_turnover = widgets.get("totalTurnover", {}).get("data", {})
+        calendar_filter = widgets.get("calendarFilter", {})
+        bar_chart_bars = widgets.get("barChart", {}).get("data", {}).get("bars", [])
+        middle_donut_data = widgets.get("middleDonut", {}).get("data", {}).get("data", [])
+        left_donut_data = widgets.get("leftDonut", {}).get("data", {}).get("data", [])
+
         yield {
             "report_id": format_data.get("reportId"),
             "title": data.get("title"),
-            "raw_data": json.dumps(format_data),
+            "period_label": widgets.get("summaryTitle", {}).get("data", {}).get("displayText"),
+            "period_start": calendar_filter.get("formatData", {}).get("start"),
+            "period_end": calendar_filter.get("formatData", {}).get("end"),
+            "turnover_rate": total_turnover.get("displayText"),
+            "total_terminations": total_turnover.get("extra", {}).get("quantity"),
+            "avg_employee_count": total_turnover.get("extra", {}).get("avgEmployeeCount"),
+            # Per-month bars: each has voluntary, involuntary, turnoverCount, employeeCount, start, end
+            "monthly_bars": json.dumps(bar_chart_bars),
+            # Termination type (Regrettable/Non-regrettable, with Voluntary/Involuntary group)
+            "termination_type_breakdown": json.dumps(middle_donut_data),
+            # Termination reason breakdown
+            "termination_reason_breakdown": json.dumps(left_donut_data),
         }
 
 
