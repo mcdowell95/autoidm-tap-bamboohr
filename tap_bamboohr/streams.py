@@ -788,6 +788,216 @@ class EmployeeWellbeing(TapBambooHRStream):
         yield record
 
 
+class EmployeeTurnoverPeriods(TapBambooHRStream):
+    """Discovers available employee turnover report periods.
+
+    Uses the subdomain-based URL (not the API gateway).
+    Makes a single request to discover all period IDs, which are then
+    used by the child EmployeeTurnover stream to fetch each period's data.
+    """
+
+    name = "employee_turnover_periods"
+    path = "/reports/employee-turnover/-40"
+    primary_keys = ["period_id"]
+    replication_key = None
+    schema_filepath = SCHEMAS_DIR / "employee_turnover_periods.json"
+
+    @property
+    def url_base(self) -> str:
+        subdomain = self.config.get("subdomain")
+        return f"https://{subdomain}.bamboohr.com"
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        return {"format": "json"}
+
+    def get_new_paginator(self) -> SinglePagePaginator:
+        return SinglePagePaginator()
+
+    def get_child_context(
+        self,
+        record: dict,
+        context: Optional[dict],
+    ) -> dict:
+        return {"period_id": record["period_id"]}
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        data = response.json()
+        widgets = data.get("formatData", {}).get("widgets", {})
+        # Try possible filter widget names for the turnover report
+        period_filter = (
+            widgets.get("dateRange", {})
+            or widgets.get("surveyFilter", {})
+            or widgets.get("dateRangeFilter", {})
+            or widgets.get("turnoverFilter", {})
+        ).get("data", {})
+        items = period_filter.get("selectData", {}).get("items", [])
+        for item in items:
+            if "value" in item:
+                yield {
+                    "period_id": item["value"],
+                    "period_label": item.get("displayText"),
+                }
+
+
+class EmployeeTurnover(TapBambooHRStream):
+    """Employee Turnover report stream.
+
+    Uses the subdomain-based URL (not the API gateway).
+    Child of EmployeeTurnoverPeriods — fetches turnover data for each period.
+    Captures overall, voluntary, and involuntary turnover counts and rates.
+    """
+
+    name = "employee_turnover"
+    path = "/reports/employee-turnover/-40"
+    primary_keys = ["report_id", "period_filter_value"]
+    replication_key = None
+    schema_filepath = SCHEMAS_DIR / "employee_turnover.json"
+    parent_stream_type = EmployeeTurnoverPeriods
+
+    @property
+    def url_base(self) -> str:
+        subdomain = self.config.get("subdomain")
+        return f"https://{subdomain}.bamboohr.com"
+
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        params = {"format": "json"}
+        if context and context.get("period_id"):
+            # Try the most likely param name; BambooHR may use dateRange or surveyFilter
+            params["dateRange"] = context["period_id"]
+        return params
+
+    def get_new_paginator(self) -> SinglePagePaginator:
+        return SinglePagePaginator()
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        data = response.json()
+        format_data = data.get("formatData", {})
+        widgets = format_data.get("widgets", {})
+
+        # Overall turnover widget — try common names
+        turnover_widget = (
+            widgets.get("turnoverRateWidget", {})
+            or widgets.get("turnoverScore", {})
+            or widgets.get("turnoverChart", {})
+            or widgets.get("turnoverRate", {})
+        ).get("data", {})
+
+        # Voluntary turnover widget
+        voluntary_widget = (
+            widgets.get("voluntaryTurnoverWidget", {})
+            or widgets.get("voluntaryTurnover", {})
+            or widgets.get("voluntaryRate", {})
+        ).get("data", {})
+
+        # Involuntary turnover widget
+        involuntary_widget = (
+            widgets.get("involuntaryTurnoverWidget", {})
+            or widgets.get("involuntaryTurnover", {})
+            or widgets.get("involuntaryRate", {})
+        ).get("data", {})
+
+        # Employee count widget
+        headcount_widget = (
+            widgets.get("employeeCount", {})
+            or widgets.get("headCount", {})
+            or widgets.get("activeEmployees", {})
+        ).get("data", {})
+
+        # Period filter widget
+        period_filter = (
+            widgets.get("dateRange", {})
+            or widgets.get("surveyFilter", {})
+            or widgets.get("dateRangeFilter", {})
+            or widgets.get("turnoverFilter", {})
+        ).get("data", {})
+
+        # Trend chart
+        trend = (
+            widgets.get("turnoverTrendChart", {})
+            or widgets.get("turnoverOverTimeChart", {})
+            or widgets.get("enpsTrendChart", {})
+        ).get("data", {})
+
+        # Department breakdown
+        dept_breakdown_widget = (
+            widgets.get("turnoverByDepartment", {})
+            or widgets.get("departmentTurnoverChart", {})
+        ).get("data", {})
+
+        # Find selected period filter
+        period_filter_value = None
+        period_filter_label = None
+        for item in period_filter.get("selectData", {}).get("items", []):
+            if item.get("selected"):
+                period_filter_value = item.get("value")
+                period_filter_label = item.get("displayText")
+                break
+
+        # Extract trend data
+        trend_dates = None
+        trend_values = None
+        if trend.get("xAxisTitles"):
+            trend_dates = json.dumps(trend["xAxisTitles"])
+        if trend.get("lines") and len(trend["lines"]) > 0:
+            points = trend["lines"][0].get("points", [])
+            trend_values = json.dumps([p.get("y") for p in points])
+
+        # Extract department breakdown
+        dept_breakdown = None
+        if dept_breakdown_widget.get("bars"):
+            dept_breakdown = json.dumps(dept_breakdown_widget["bars"])
+
+        record = {
+            "report_id": format_data.get("reportId"),
+            "title": data.get("title"),
+            "period_filter_value": period_filter_value,
+            "period_filter_label": period_filter_label,
+            "total_employees": (
+                headcount_widget.get("headCount")
+                or headcount_widget.get("count")
+                or headcount_widget.get("value")
+            ),
+            "total_terminations": (
+                turnover_widget.get("terminationCount")
+                or turnover_widget.get("count")
+                or turnover_widget.get("value")
+            ),
+            "voluntary_terminations": (
+                voluntary_widget.get("terminationCount")
+                or voluntary_widget.get("count")
+                or voluntary_widget.get("value")
+            ),
+            "involuntary_terminations": (
+                involuntary_widget.get("terminationCount")
+                or involuntary_widget.get("count")
+                or involuntary_widget.get("value")
+            ),
+            "turnover_rate": (
+                turnover_widget.get("rate")
+                or turnover_widget.get("percentage")
+                or turnover_widget.get("label")
+            ),
+            "voluntary_rate": (
+                voluntary_widget.get("rate")
+                or voluntary_widget.get("percentage")
+                or voluntary_widget.get("label")
+            ),
+            "involuntary_rate": (
+                involuntary_widget.get("rate")
+                or involuntary_widget.get("percentage")
+                or involuntary_widget.get("label")
+            ),
+            "trend_dates": trend_dates,
+            "trend_values": trend_values,
+            "department_breakdown": dept_breakdown,
+        }
+        yield record
+
+
 class WhosOut(TapBambooHRStream):
     name = "whos_out"
     path = "/time_off/whos_out"

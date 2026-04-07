@@ -1,0 +1,47 @@
+{
+  "type": ["object"],
+  "properties": {
+    "report_id": {
+      "type": ["integer", "null"]
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "period_filter_value": {
+      "type": ["string", "null"]
+    },
+    "period_filter_label": {
+      "type": ["string", "null"]
+    },
+    "total_employees": {
+      "type": ["integer", "null"]
+    },
+    "total_terminations": {
+      "type": ["integer", "null"]
+    },
+    "voluntary_terminations": {
+      "type": ["integer", "null"]
+    },
+    "involuntary_terminations": {
+      "type": ["integer", "null"]
+    },
+    "turnover_rate": {
+      "type": ["string", "null"]
+    },
+    "voluntary_rate": {
+      "type": ["string", "null"]
+    },
+    "involuntary_rate": {
+      "type": ["string", "null"]
+    },
+    "trend_dates": {
+      "type": ["string", "null"]
+    },
+    "trend_values": {
+      "type": ["string", "null"]
+    },
+    "department_breakdown": {
+      "type": ["string", "null"]
+    }
+  }
+}
