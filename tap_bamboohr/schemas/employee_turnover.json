@@ -42,6 +42,9 @@
     },
     "department_breakdown": {
       "type": ["string", "null"]
+    },
+    "raw_widgets": {
+      "type": ["string", "null"]
     }
   }
 }
