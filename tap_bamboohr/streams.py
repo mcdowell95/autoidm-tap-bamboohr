@@ -28,6 +28,19 @@ class TapBambooHRStream(RESTStream):
     _LOG_REQUEST_METRIC_URLS: bool = True
 
     @property
+    def timeout(self) -> tuple:
+        """Return (connect, read) timeouts.
+
+        The SDK default is the scalar 300, which requests applies to the connect
+        phase as well. That is longer than the kernel's SYN-retry budget, so an
+        unroutable address costs ~127s before create_connection falls through to
+        the next one in the DNS result - api.bamboohr.com resolves to four. Capping
+        the connect phase turns that into a fast failover; ConnectTimeout subclasses
+        ConnectionError, which the SDK's backoff decorator already retries on.
+        """
+        return (5.0, 300.0)
+
+    @property
     def url_base(self) -> str:
         subdomain = self.config.get("subdomain")
         return f"https://api.bamboohr.com/api/gateway.php/{subdomain}/v1"
