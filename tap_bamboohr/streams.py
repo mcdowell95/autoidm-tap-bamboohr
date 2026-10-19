@@ -28,6 +28,12 @@ class TapBambooHRStream(RESTStream):
     _LOG_REQUEST_METRIC_URLS: bool = True
 
     @property
+    def timeout(self) -> tuple[int, int]:
+        # Healthy requests finish in under 3s, but from Cloud Run some stall ~135s
+        # before succeeding; fail fast so the SDK's backoff retries them instead.
+        return (10, 60)
+
+    @property
     def url_base(self) -> str:
         subdomain = self.config.get("subdomain")
         return f"https://api.bamboohr.com/api/gateway.php/{subdomain}/v1"
